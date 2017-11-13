@@ -19,13 +19,14 @@ def queue_from_config(app_config, prefix="rabbit.", **kwargs):
     cfg = config.parse_config(app_config, {
         config_prefix: {
             "queue_name": config.String,
-            "queue_exchange": config.String,
-            "queue_durable": config.Boolean,
-            "queue_exclusive": config.Boolean,
+            "queue_durable": config.Optional(config.Boolean, False),
+            "queue_exclusive": config.Optional(config.Boolean, False),
         },
     })
 
     options = getattr(cfg, config_prefix)
+    # get all prefs, prefixed with queue_ and build Queue kwargs
+    options = dict((k.replace("queue_", ""),v) for k,v in options.items() if k.startswith("queue"))
     return kombu.Queue(**options)
 
 

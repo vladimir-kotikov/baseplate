@@ -6,22 +6,22 @@ from __future__ import unicode_literals
 import signal
 import gevent
 
-from baseplate.integration.rabbitmq import connection_from_config, exchange_from_config, queue_from_config
+from baseplate.integration.rabbitmq import connection_from_config, queue_from_config
 from kombu.mixins import ConsumerMixin
 
 class RabbitServer(ConsumerMixin):
 
-    def __init__(self, conn, queues, exchanges, handler, listener, **kwargs):
+    def __init__(self, conn, queues, handler, listener, **kwargs):
         self.connection = conn
         self.queues = queues
-        self.callbacks = handler.get_callbacks()
+        self.__callbacks = handler.get_callbacks()
 
         if "max_retries" in kwargs:
             self.connect_max_retries = kwargs["max_retries"]
 
     def get_consumers(self, Consumer, channel):
         return [
-            Consumer(self.queues, callbacks=[self.callbacks]),
+            Consumer(queues=self.queues, callbacks=self.__callbacks),
         ]
 
     def serve_forever(self, stop_timeout=None):
@@ -47,7 +47,6 @@ class RabbitServer(ConsumerMixin):
 def make_server(config, listener, app):
 
     queue = queue_from_config(config)
-    exchange = exchange_from_config(config)
     connection = connection_from_config(config)
 
     from ..config import parse_config, Integer
@@ -61,7 +60,6 @@ def make_server(config, listener, app):
     server = RabbitServer(
         conn=connection,
         queues=[queue],
-        exchanges=[exchange],
         handler=app,
         listener=listener, max_retries = max_retries)
 
