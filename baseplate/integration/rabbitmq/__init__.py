@@ -1,7 +1,72 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
+
 import sys
 import kombu
 
 from ... import config
+
+
+def connection_from_config(app_config, prefix="rabbit."):
+    assert prefix.endswith(".")
+    config_prefix = prefix[:-1]
+    cfg = config.parse_config(app_config, {
+        config_prefix: {
+            # TODO: config.Endpoint?
+            "connection_url": config.String,
+        },
+    })
+
+    url = getattr(cfg, config_prefix).connection_url
+
+    return kombu.Connection(url)
+
+
+def queue_from_config(app_config, prefix="rabbit."):
+    assert prefix.endswith(".")
+    config_prefix = prefix[:-1]
+    # TODO: other config parameters
+    cfg = config.parse_config(app_config, {
+        config_prefix: {
+            "queue_name": config.String,
+            "queue_durable": config.Optional(config.Boolean, False),
+            "queue_exclusive": config.Optional(config.Boolean, False),
+        },
+    })
+
+    options = getattr(cfg, config_prefix)
+    # get all prefs, prefixed with queue_ and build Queue kwargs
+    remapped_opts = [(k.replace("queue_", ""), v)
+                     for k, v in options.items()
+                     if k.startswith("queue")]
+
+    options = dict(remapped_opts)
+    return make_queue(**options)
+
+
+def make_queue(*args, **kwargs):
+    return kombu.Queue(*args, **kwargs)
+
+
+def exchange_from_config(app_config, prefix="rabbit."):
+    assert prefix.endswith(".")
+    config_prefix = prefix[:-1]
+    cfg = config.parse_config(app_config, {
+        config_prefix: {
+            "exchange_name": config.String,
+            # TODO: enum?
+            "exchange_type": config.String,
+        },
+    })
+
+    options = getattr(cfg, config_prefix)
+    return make_exchange(**options)
+
+
+def make_exchange(*args, **kwargs):
+    return kombu.Exchange(*args, **kwargs)
 
 
 class MessageContext(object):
@@ -63,55 +128,3 @@ class BaseplateConsumerFactory(object):
             callbacks=self.__callbacks)
 
         return [consumer]
-
-
-def queue_from_config(app_config, prefix="rabbit."):
-    assert prefix.endswith(".")
-    config_prefix = prefix[:-1]
-    # TODO: other config parameters
-    cfg = config.parse_config(app_config, {
-        config_prefix: {
-            "queue_name": config.String,
-            "queue_durable": config.Optional(config.Boolean, False),
-            "queue_exclusive": config.Optional(config.Boolean, False),
-        },
-    })
-
-    options = getattr(cfg, config_prefix)
-    # get all prefs, prefixed with queue_ and build Queue kwargs
-    remapped_opts = [(k.replace("queue_", ""), v)
-                     for k, v in options.items()
-                     if k.startswith("queue")]
-
-    options = dict(remapped_opts)
-    return kombu.Queue(**options)
-
-
-def exchange_from_config(app_config, prefix="rabbit."):
-    assert prefix.endswith(".")
-    config_prefix = prefix[:-1]
-    cfg = config.parse_config(app_config, {
-        config_prefix: {
-            "exchange_name": config.String,
-            # TODO: enum?
-            "exchange_type": config.String,
-        },
-    })
-
-    options = getattr(cfg, config_prefix)
-    return kombu.Exchange(**options)
-
-
-def connection_from_config(app_config, prefix="rabbit."):
-    assert prefix.endswith(".")
-    config_prefix = prefix[:-1]
-    cfg = config.parse_config(app_config, {
-        config_prefix: {
-            # TODO: config.Endpoint?
-            "connection_url": config.String,
-        },
-    })
-
-    url = getattr(cfg, config_prefix).connection_url
-
-    return kombu.Connection(url)

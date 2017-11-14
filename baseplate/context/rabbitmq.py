@@ -3,39 +3,12 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals
 
-from kombu import Connection, Exchange, Queue
 from kombu.pools import Producers
 
 from thrift.util.Serializer import serialize
 
 from . import ContextFactory
-from .. import config
 
-
-def connection_from_config(app_config, prefix="rabbitmq.", **kwargs):
-    """Make a kombu connection from a configuration dictionary.
-
-    ---
-
-    """
-    assert prefix.endswith(".")
-    config_prefix = prefix[:-1]
-    cfg = config.parse_config(app_config, {
-        config_prefix: {
-            "url": config.String,
-        },
-    })
-
-    options = getattr(cfg, config_prefix)
-
-    return Connection(options.url)
-
-def make_exchange(*args, **kwargs):
-    return Exchange(*args, **kwargs)
-
-
-def make_queue(*args, **kwargs):
-    return Queue(*args, **kwargs)
 
 class RabbitMQPublisherContextFactory(ContextFactory):
     """RabbitMQ publisher context factory.
