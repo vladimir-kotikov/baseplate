@@ -1,18 +1,71 @@
+import sys
+import kombu
+
 from ... import config
 
-import kombu
-from kombu.mixins import ConsumerMixin
 
-class BaseplateConsumerBase(ConsumerMixin):
+class MessageContext(object):
     pass
 
 
-class BaseplateConsumerBuilder(object):
-    pass
+class BaseplateConsumer(kombu.Consumer):
+    """kombu's Consumer extension for baseplate.
+
+    :param kombu.ChannelT channel: The connection/channel to use for this
+        consumer.
+    :param baseplate.core.Baseplate baseplate: The baseplate instance for your
+        application.
+
+    """
+    def __init__(self, channel, baseplate, **kwargs):
+        self.baseplate = baseplate
+        super(BaseplateConsumer, self).__init__(channel, **kwargs)
+
+    def receive(self, body, message):
+        context = MessageContext()
+        context.trace = self.baseplate.make_server_span(
+            context,
+            # TODO: Name needs to be passed from outside?
+            name="TODO",
+            # TODO: trace_info
+            # trace_info=trace_info,
+        )
+
+        # TODO: Add message's headers to trace
+        context.trace.start()
+
+        try:
+            for callback in self.callbacks:
+                callback(body, message, context)
+        except:
+            context.trace.finish(exc_info=sys.exc_info())
+            raise
+        else:
+            context.trace.finish()
 
 
-def queue_from_config(app_config, prefix="rabbit.", **kwargs):
-    print (app_config)
+class BaseplateConsumerFactory(object):
+    """
+    Consumer factory class for injecting dependencies into BaseplateConsumer
+        during application construction.
+    """
+    def __init__(self, handler, baseplate):
+        self.handler = handler
+        self.__callbacks = handler.get_callbacks()
+        assert self.__callbacks, "At least one callback must be specified"
+        self.baseplate = baseplate
+
+    def get_consumers(self, channel, queues):
+        consumer = BaseplateConsumer(
+            channel,
+            self.baseplate,
+            queues=queues,
+            callbacks=self.__callbacks)
+
+        return [consumer]
+
+
+def queue_from_config(app_config, prefix="rabbit."):
     assert prefix.endswith(".")
     config_prefix = prefix[:-1]
     # TODO: other config parameters
@@ -26,11 +79,15 @@ def queue_from_config(app_config, prefix="rabbit.", **kwargs):
 
     options = getattr(cfg, config_prefix)
     # get all prefs, prefixed with queue_ and build Queue kwargs
-    options = dict((k.replace("queue_", ""),v) for k,v in options.items() if k.startswith("queue"))
+    remapped_opts = [(k.replace("queue_", ""), v)
+                     for k, v in options.items()
+                     if k.startswith("queue")]
+
+    options = dict(remapped_opts)
     return kombu.Queue(**options)
 
 
-def exchange_from_config(app_config, prefix="rabbit.", **kwargs):
+def exchange_from_config(app_config, prefix="rabbit."):
     assert prefix.endswith(".")
     config_prefix = prefix[:-1]
     cfg = config.parse_config(app_config, {
@@ -44,7 +101,8 @@ def exchange_from_config(app_config, prefix="rabbit.", **kwargs):
     options = getattr(cfg, config_prefix)
     return kombu.Exchange(**options)
 
-def connection_from_config(app_config, prefix="rabbit.", **kwargs):
+
+def connection_from_config(app_config, prefix="rabbit."):
     assert prefix.endswith(".")
     config_prefix = prefix[:-1]
     cfg = config.parse_config(app_config, {
