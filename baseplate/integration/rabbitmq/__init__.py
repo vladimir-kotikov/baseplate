@@ -76,55 +76,58 @@ class MessageContext(object):
 class BaseplateConsumer(kombu.Consumer):
     """kombu's Consumer extension for baseplate.
 
-    :param kombu.ChannelT channel: The connection/channel to use for this
-        consumer.
+    :param kombu.ChannelT channel: The channel to use for this consumer.
     :param baseplate.core.Baseplate baseplate: The baseplate instance for your
         application.
+    :param str name: A name to identify the the consumer in trace info.
 
     """
-    def __init__(self, channel, baseplate, **kwargs):
+    def __init__(self, channel, baseplate, name=None, **kwargs):
         self.baseplate = baseplate
         super(BaseplateConsumer, self).__init__(channel, **kwargs)
+        self.name = name or "baseplate"
 
     def receive(self, body, message):
         context = MessageContext()
-        context.trace = self.baseplate.make_server_span(
-            context,
-            # TODO: Name needs to be passed from outside?
-            name="TODO",
-            # TODO: trace_info
-            # trace_info=trace_info,
-        )
+        # TODO: build trace_info from upstream
+        with self.baseplate.make_server_span(context, self.name) as span:
+            # TODO: Add appropriate headers to trace
+            context.trace = span
 
-        # TODO: Add message's headers to trace
-        context.trace.start()
-
-        try:
             for callback in self.callbacks:
+                # Pass baseplate context as an argument
                 callback(body, message, context)
-        except:
-            context.trace.finish(exc_info=sys.exc_info())
-            raise
-        else:
-            context.trace.finish()
 
 
 class BaseplateConsumerFactory(object):
     """
     Consumer factory class for injecting dependencies into BaseplateConsumer
         during application construction.
+
+    :param object handler: Handler object which must expose 'get_callbacks'
+        method returning a list of callback to be called when new message
+        arrives.
+    :param baseplate.core.Baseplate baseplate: The baseplate instance for your
+        application.
+    :param str name: A name to identify the the consumer handling the incoming
+        message in trace info. If not specified, handler's class name will be
+        used.
     """
-    def __init__(self, handler, baseplate):
+    def __init__(self, handler, baseplate, name=None):
         self.handler = handler
         self.__callbacks = handler.get_callbacks()
         assert self.__callbacks, "At least one callback must be specified"
+
         self.baseplate = baseplate
+        # If name is not specified - use handler's class name
+        self.name = name or handler.__class__.__name__
 
     def get_consumers(self, channel, queues):
         consumer = BaseplateConsumer(
             channel,
             self.baseplate,
             queues=queues,
-            callbacks=self.__callbacks)
+            callbacks=self.__callbacks,
+            name=self.name)
 
         return [consumer]
