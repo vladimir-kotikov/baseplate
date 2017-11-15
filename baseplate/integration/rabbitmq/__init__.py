@@ -3,10 +3,10 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals
 
-import sys
 import kombu
 
 from ... import config
+from .serializer import ThriftSerializer
 
 
 def connection_from_config(app_config, prefix="rabbit."):
@@ -113,7 +113,7 @@ class BaseplateConsumerFactory(object):
         message in trace info. If not specified, handler's class name will be
         used.
     """
-    def __init__(self, handler, baseplate, name=None):
+    def __init__(self, handler, baseplate, name=None, thrift_class=None):
         self.handler = handler
         self.__callbacks = handler.get_callbacks()
         assert self.__callbacks, "At least one callback must be specified"
@@ -122,12 +122,19 @@ class BaseplateConsumerFactory(object):
         # If name is not specified - use handler's class name
         self.name = name or handler.__class__.__name__
 
+        self.serializer = None
+        if thrift_class is not None:
+            serializer = ThriftSerializer(thrift_class)
+            serializer.register()
+            self.serializer = [serializer.name]
+
     def get_consumers(self, channel, queues):
         consumer = BaseplateConsumer(
             channel,
             self.baseplate,
             queues=queues,
             callbacks=self.__callbacks,
+            accept=self.serializer,
             name=self.name)
 
         return [consumer]
